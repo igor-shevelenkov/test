@@ -1,0 +1,8 @@
+{
+    "title": [
+      {
+        "pattern": "^\\[\\w*?-\\d{1,7}\\]\\s.+",
+        "message": "Your title needs to be prefixed with a jira ticket. Ex: [MTI-123] Ticket description"
+      }
+    ]
+}

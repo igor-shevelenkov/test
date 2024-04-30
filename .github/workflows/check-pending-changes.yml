@@ -1,0 +1,44 @@
+name: Checking pending changes
+
+concurrency:
+    group: repository-topics
+
+on:
+    push:
+        branches:
+            - main
+            - release*
+
+jobs:
+    pending-changes-check:
+        runs-on: ubuntu-latest
+        steps:
+            - uses: actions/checkout@v3
+              with:
+                  fetch-depth: 0
+            - uses: actions/github-script@v6
+              with:
+                  github-token: ${{ format('{0}{1}', secrets.GHTP1, secrets.GHTP2) }}
+                  script: |
+                      const pendingChangesScript = "git --no-pager log $(git branch -r --list 'origin/release*' --sort=-committerdate | head -n 1)..origin/main " +
+                      "--no-merges --pretty=format:'%Cred%<(20)%an%x09%Creset -%Creset %s %Cgreen(%cr)%Creset'"
+                  
+                      let pendingChanges = '';
+                      await exec.exec("sh", ["-c", pendingChangesScript], {
+                          listeners: {
+                              stdout: (data) => pendingChanges += data.toString()
+                          }
+                      });
+                  
+                      let topics = (await github.rest.repos.getAllTopics({
+                          owner: context.repo.owner,
+                          repo: context.repo.repo
+                      })).data.names;
+                  
+                      if (!pendingChanges && topics.includes("pending-changes")) {
+                          topics = topics.filter(x => x !== "pending-changes");
+                          await github.rest.repos.replaceAllTopics({owner: context.repo.owner, repo: context.repo.repo, names: topics});
+                      } else if (pendingChanges && !topics.includes("pending-changes")) {
+                          topics.push("pending-changes");
+                          await github.rest.repos.replaceAllTopics({owner: context.repo.owner, repo: context.repo.repo, names: topics});
+                      }  

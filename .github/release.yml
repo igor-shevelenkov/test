@@ -1,0 +1,11 @@
+﻿changelog:
+  categories:
+    - title: Breaking Changes 🛠
+      labels:
+        - breaking-change
+    - title: Special Release Required ❗❗❗
+      labels:
+        - requires-a-special-release
+    - title: Other Changes
+      labels:
+        - "*"

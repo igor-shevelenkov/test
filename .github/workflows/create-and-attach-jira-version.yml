@@ -1,0 +1,105 @@
+name: Create and attach Jira version to release issues
+
+concurrency:
+    group: create-and-attach-jira-version
+
+on:
+    release:
+        types:
+            - published
+
+jobs:
+    testings:
+        runs-on: ubuntu-latest
+        steps:
+            -   name: Checkout
+                uses: actions/checkout@v3
+                with:
+                    fetch-depth: 0
+
+            -   name: Setup node
+                uses: actions/setup-node@v3
+                with:
+                    node-version: '16'
+
+            -   name: Install Jira Lib
+                run: npm install jira.js
+
+            -   name: Create and attach Jira version
+                uses: actions/github-script@v6
+                env:
+                    JIRA_API_TOKEN: ${{ secrets.JIRA_API_TOKEN }}
+                    JIRA_USER_EMAIL: ${{ secrets.JIRA_USER_EMAIL }}
+                    MTI_PROJECT_ID: '14540'
+                    SERVICE_ID: ETZ
+                with:
+                    script: |
+                        const jira = require('jira.js');
+                        
+                        let body = context.payload.release.body;
+                        
+                        let pattern = /\[(\w*?-\d{1,7})]/g;
+                        let issues = [...new Set([...body.matchAll(pattern)].map(x => x[1]))];
+                        
+                        if (issues.length === 0){
+                            return;
+                        }
+                        
+                        const client = new jira.Version3Client({
+                            host: 'https://idtjira.atlassian.net',
+                            authentication: {
+                                basic: {
+                                    email: process.env[ 'JIRA_USER_EMAIL' ],
+                                    apiToken: process.env[ 'JIRA_API_TOKEN' ],
+                                },
+                            },
+                        });
+                        
+                        const mtiProjectId = process.env['MTI_PROJECT_ID'];
+                        const serviceId = process.env['SERVICE_ID'];
+                        const buildVersionTag = context.payload.release.tag_name;
+                        const versionName = `${serviceId} ${buildVersionTag}`;
+                        
+                        const versions = await client.projectVersions.getProjectVersions({ projectIdOrKey: mtiProjectId });
+                        let searchVersion = versions.find((version) => version.name === versionName);
+                        
+                        if(!searchVersion) {
+                            console.log(`${versionName} jira version doesn't exist`);
+                            searchVersion = await client.projectVersions.createVersion({
+                                name: versionName,
+                                projectId: mtiProjectId
+                            });
+                            console.log(`${versionName} jira version was successfully created`);
+                        }
+                        
+                        for (issueKey of issues) {
+                            console.log(`Attaching jira version ${searchVersion.name} to issue ${issueKey}`);
+                        
+                            let issue;
+                            try {
+                                issue = await client.issues.getIssue({
+                                    issueIdOrKey: issueKey
+                                });
+                            }
+                            catch {
+                                console.log(`Issue ${issueKey} doesn't exist`);
+                                continue;
+                            }
+                        
+                            let fixVersions = issue.fields.fixVersions
+                        
+                            if (fixVersions.some(fixVersion => fixVersion.name === searchVersion.name)) {
+                                console.log(`Jira version ${searchVersion.name} has been already attached to issue ${issueKey}`);
+                                continue;
+                            }
+                        
+                            fixVersions.push(searchVersion);
+                        
+                            await client.issues.editIssue({
+                                issueIdOrKey: issueKey,
+                                notifyUsers: false,
+                                fields: { fixVersions }
+                            });
+                        
+                            console.log(`Jira version ${searchVersion.name} has been attached successfully to issue ${issueKey}`);
+                        }

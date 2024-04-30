@@ -1,0 +1,24 @@
+name: Send Release Notification
+on:
+  release:
+    types: [published]
+jobs:
+  send-release-notification:
+    name: Send Release Notification
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v3
+      - name: Slack Notification
+        uses: slackapi/slack-github-action@v1.22.0
+        with:
+          payload: |
+            {
+              "releaseTag": "${{github.event.release.tag_name}}",
+              "releaseUrl": "${{github.event.release.html_url}}",
+              "repositoryUrl": "${{github.event.repository.html_url}}",
+              "repositoryName": "${{github.event.repository.full_name}}"
+            }
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.MTI_REPO_RELEASE_NOTIFICATIONS }}
